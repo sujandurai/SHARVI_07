@@ -1,0 +1,1112 @@
+#include <SPI.h>
+#include <MD_MAX72xx.h>
+#include <ctype.h>
+#include <Servo.h>
+#include <Wire.h>
+#include <U8g2lib.h>
+
+// =======================
+//  DISPLAY
+// =======================
+U8G2_SH1106_128X64_NONAME_F_HW_I2C display(U8G2_R0);
+
+bool isSpeaking = false;
+unsigned long speakStartTime = 0;
+
+// Eye parameters
+int eyeY = 20;
+int leftEyeX = 30;
+int rightEyeX = 65;
+int leftEyeW = 30;
+int leftEyeH = 22;
+int rightEyeW = 35;
+int rightEyeH = 26;
+
+// =======================
+//  FUNCTION DECLARATIONS
+// =======================
+void startupAnimation();
+void typeWriterHello();
+void drawEyes(int lX, int rX, int lW, int lH, int rW, int rH, int offsetY);
+void drawEyesOffset(int offsetY); // For startup animation
+void blinkEyes();
+void blinkEyesAtCurrent(int lX, int rX, int offsetY);
+void moveRight();
+void moveLeft();
+void rageEyes();
+void defaultEyes();
+void reverseModeEyes();
+
+
+// =======================
+//  SERVO SYSTEM
+// =======================
+Servo horizontalServo;
+Servo verticalServo;
+
+int horizontalCenter = 90;
+int verticalCenter   = 90;
+
+int moveAngle = 35;
+int speedDelay = 8;
+
+int currentH = 90;
+int currentV = 90;
+
+// =======================
+//  SERVO SMOOTH MOVE
+// =======================
+void smoothMove(Servo &servo, int &currentPos, int targetPos) {
+
+  if (currentPos < targetPos) {
+    for (int pos = currentPos; pos <= targetPos; pos++) {
+      servo.write(pos);
+      delay(speedDelay);
+    }
+  } else {
+    for (int pos = currentPos; pos >= targetPos; pos--) {
+      servo.write(pos);
+      delay(speedDelay);
+    }
+  }
+
+  currentPos = targetPos;
+}
+
+void centerPosition() {
+  smoothMove(horizontalServo, currentH, horizontalCenter);
+  smoothMove(verticalServo, currentV, verticalCenter);
+}
+
+void servoLeft() {
+  smoothMove(horizontalServo, currentH, horizontalCenter - moveAngle);
+}
+
+void servoRight() {
+  smoothMove(horizontalServo, currentH, horizontalCenter + moveAngle);
+}
+
+void servoUp() {
+  smoothMove(verticalServo, currentV, verticalCenter - moveAngle);
+}
+
+void servoDown() {
+  smoothMove(verticalServo, currentV, verticalCenter + moveAngle);
+}
+
+
+
+// =======================
+// 🚀 STARTUP ANIMATION
+// =======================
+void startupAnimation() {
+   playTrack(1);
+  typeWriterHello();
+  delay(200);
+
+   playTrack(2);
+  // Eyes slide in from top
+  for (int y = -30; y <= 20; y += 2) {
+    display.clearBuffer();
+    drawEyesOffset(y);
+    display.sendBuffer();
+    delay(20);
+  }
+
+  delay(300);
+
+  // Small bounce
+  for (int i = 0; i < 2; i++) {
+    display.clearBuffer();
+    drawEyesOffset(18);
+    display.sendBuffer();
+    delay(60);
+
+    display.clearBuffer();
+    drawEyesOffset(20);
+    display.sendBuffer();
+    delay(60);
+  }
+
+  delay(300);
+  playTrack(3);
+  // Blink once
+  blinkEyes();
+}
+
+// =======================
+// ✨ TYPEWRITER HELLO
+// =======================
+void typeWriterHello() {
+  const char* text = "HELLO!";
+  display.setFont(u8g2_font_ncenB14_tr);
+
+  int16_t textWidth = display.getStrWidth(text);
+  int x = (128 - textWidth) / 2;
+
+  for (int i = 0; i <= 6; i++) {
+    display.clearBuffer();
+    display.drawStr(x, 30, String(text).substring(0, i).c_str());
+    display.sendBuffer();
+    delay(150);
+  }
+}
+
+// =======================
+// 👀 DRAW EYES OFFSET
+// =======================
+void drawEyesOffset(int offsetY) {
+  display.drawRBox(20, offsetY, 35, 25, 6); // Left eye
+  display.drawRBox(73, offsetY, 35, 25, 6); // Right eye
+}
+
+// =======================
+// 👁 BLINK FUNCTION
+// =======================
+void blinkEyes() {
+  display.clearBuffer();
+  drawEyesOffset(20); // Open
+  display.sendBuffer();
+  delay(800);
+
+  display.clearBuffer(); // Closed
+  display.drawBox(20, 32, 35, 4);
+  display.drawBox(73, 32, 35, 4);
+  display.sendBuffer();
+  delay(200);
+}
+
+// =======================
+// 👀 DRAW EYES ANY POSITION
+// =======================
+void drawEyes(int lX, int rX, int lW, int lH, int rW, int rH, int offsetY) {
+  display.clearBuffer();
+  display.drawRBox(lX, eyeY + offsetY, lW, lH, 6); // Left
+  display.drawRBox(rX, eyeY + offsetY, rW, rH, 6); // Right
+  display.sendBuffer();
+}
+
+// =======================
+// 👁 BLINK AT CURRENT
+// =======================
+void blinkEyesAtCurrent(int lX, int rX, int offsetY) {
+  // Close
+  display.clearBuffer();
+  display.drawBox(lX, eyeY + 7 + offsetY, leftEyeW, 4);
+  display.drawBox(rX, eyeY + 7 + offsetY, rightEyeW, 4);
+  display.sendBuffer();
+  delay(200);
+
+  // Open
+  drawEyes(lX, rX, leftEyeW, leftEyeH, rightEyeW, rightEyeH, offsetY);
+  delay(200);
+}
+
+// =======================
+// 👀 MOVE RIGHT
+// =======================
+void moveRight() {
+  int steps = 10;
+  int targetLeftX = leftEyeX + 8;
+  int targetRightX = rightEyeX + 18;
+  int targetOffsetY = -15;
+
+  int startLeftX = leftEyeX;
+  int startRightX = rightEyeX;
+  int startOffsetY = 0;
+
+  for (int i = 0; i <= steps; i++) {
+    int lX = startLeftX + (targetLeftX - startLeftX) * i / steps;
+    int rX = startRightX + (targetRightX - startRightX) * i / steps;
+    int offsetY = startOffsetY + (targetOffsetY - startOffsetY) * i / steps;
+    drawEyes(lX, rX, leftEyeW, leftEyeH, rightEyeW, rightEyeH, offsetY);
+    delay(50);
+  }
+
+  for (int i = 0; i < 2; i++)
+    blinkEyesAtCurrent(targetLeftX, targetRightX, targetOffsetY);
+
+  for (int i = 0; i <= steps; i++) {
+    int lX = targetLeftX + (leftEyeX - targetLeftX) * i / steps;
+    int rX = targetRightX + (rightEyeX - targetRightX) * i / steps;
+    int offsetY = targetOffsetY + (0 - targetOffsetY) * i / steps;
+    drawEyes(lX, rX, leftEyeW, leftEyeH, rightEyeW, rightEyeH, offsetY);
+    delay(50);
+  }
+
+  blinkEyesAtCurrent(leftEyeX, rightEyeX, 0);
+}
+
+// =======================
+// 👀 MOVE LEFT
+// =======================
+void moveLeft() {
+  int steps = 10;
+  int targetLeftX = leftEyeX - 18;
+  int targetRightX = rightEyeX - 8;
+  int targetLeftW = rightEyeW;
+  int targetLeftH = rightEyeH;
+  int targetRightW = leftEyeW;
+  int targetRightH = leftEyeH;
+  int targetOffsetY = -15;
+
+  int startLeftX = leftEyeX;
+  int startRightX = rightEyeX;
+  int startOffsetY = 0;
+
+  for (int i = 0; i <= steps; i++) {
+    int lX = startLeftX + (targetLeftX - startLeftX) * i / steps;
+    int rX = startRightX + (targetRightX - startRightX) * i / steps;
+    int offsetY = startOffsetY + (targetOffsetY - startOffsetY) * i / steps;
+
+    int lW = leftEyeW + (targetLeftW - leftEyeW) * i / steps;
+    int lH = leftEyeH + (targetLeftH - leftEyeH) * i / steps;
+    int rW = rightEyeW + (targetRightW - rightEyeW) * i / steps;
+    int rH = rightEyeH + (targetRightH - rightEyeH) * i / steps;
+
+    drawEyes(lX, rX, lW, lH, rW, rH, offsetY);
+    delay(50);
+  }
+
+  for (int i = 0; i < 2; i++)
+    blinkEyesAtCurrent(targetLeftX, targetRightX, targetOffsetY);
+
+  for (int i = 0; i <= steps; i++) {
+    int lX = targetLeftX + (leftEyeX - targetLeftX) * i / steps;
+    int rX = targetRightX + (rightEyeX - targetRightX) * i / steps;
+    int offsetY = targetOffsetY + (0 - targetOffsetY) * i / steps;
+    drawEyes(lX, rX, leftEyeW, leftEyeH, rightEyeW, rightEyeH, offsetY);
+    delay(50);
+  }
+
+  blinkEyesAtCurrent(leftEyeX, rightEyeX, 0);
+}
+
+// =======================
+// 😡 RAGE EYES
+// =======================
+void rageEyes() {
+  int steps = 5;
+  int shrink = 5;
+
+  int originalLeftW = leftEyeW;
+  int originalLeftH = leftEyeH;
+  int originalRightW = rightEyeW;
+  int originalRightH = rightEyeH;
+
+  for (int i = 0; i <= steps; i++) {
+    int lW = originalLeftW - shrink * i / steps;
+    int lH = originalLeftH - shrink * i / steps;
+    int rW = originalRightW - shrink * i / steps;
+    int rH = originalRightH - shrink * i / steps;
+    drawEyes(leftEyeX, rightEyeX, lW, lH, rW, rH, 0);
+    delay(50);
+  }
+
+  for (int i = 0; i < 12; i++) {
+    int lX = random(5, 45);
+    int rX = random(60, 120);
+    int offsetY = random(-10, 10);
+    drawEyes(lX, rX, originalLeftW - shrink, originalLeftH - shrink,
+             originalRightW - shrink, originalRightH - shrink, offsetY);
+    delay(100);
+  }
+
+  for (int i = 0; i < 6; i++) {
+    int offsetY = (i % 2 == 0) ? -3 : 3;
+    drawEyes(leftEyeX, rightEyeX, originalLeftW - shrink, originalLeftH - shrink,
+             originalRightW - shrink, originalRightH - shrink, offsetY);
+    delay(80);
+  }
+
+  for (int i = 0; i <= steps; i++) {
+    int lW = (originalLeftW - shrink) + shrink * i / steps;
+    int lH = (originalLeftH - shrink) + shrink * i / steps;
+    int rW = (originalRightW - shrink) + shrink * i / steps;
+    int rH = (originalRightH - shrink) + shrink * i / steps;
+    int offsetY = (3 - 0) * (steps - i) / steps;
+    drawEyes(leftEyeX, rightEyeX, lW, lH, rW, rH, offsetY);
+    delay(50);
+  }
+
+  blinkEyesAtCurrent(leftEyeX, rightEyeX, 0);
+}
+
+// =======================
+// 😎 UPGRADED DEFAULT EYES MODE
+// =======================
+void defaultEyes() {
+  static unsigned long lastBlink = 0;  // track last blink time
+  int steps = 20;
+  int maxOffsetX = 5;   // horizontal scan
+  int maxOffsetY = 2;   // vertical bounce
+  int shineSize = 3;    // eye sparkle size
+  unsigned long now = millis();
+
+  for (int i = 0; i <= steps; i++) {
+    int offsetX = maxOffsetX * sin(PI * i / steps);      // smooth left-right
+    int offsetY = maxOffsetY * sin(2 * PI * i / steps);  // gentle up-down
+
+    display.clearBuffer();
+
+    // Draw left eye
+    display.drawRBox(leftEyeX + offsetX, eyeY + offsetY, leftEyeW, leftEyeH, 6);
+    display.drawCircle(leftEyeX + offsetX + leftEyeW - 6, eyeY + offsetY + 6, shineSize, U8G2_DRAW_ALL); // sparkle
+
+    // Draw right eye
+    display.drawRBox(rightEyeX + offsetX, eyeY + offsetY, rightEyeW, rightEyeH, 6);
+    display.drawCircle(rightEyeX + offsetX + rightEyeW - 6, eyeY + offsetY + 6, shineSize, U8G2_DRAW_ALL); // sparkle
+
+    display.sendBuffer();
+
+    // Natural random blink every 2–5 seconds
+    if (now - lastBlink > random(2000, 5000)) {
+      blinkEyesAtCurrent(leftEyeX + offsetX, rightEyeX + offsetX, offsetY);
+      lastBlink = now; // reset last blink time
+    }
+
+    delay(50); // adjust speed of scanning motion
+  }
+}
+// =======================
+// 🚀 FORWARD MODE EYES
+// =======================
+void forwardEyes() {
+
+  int steps = 10;
+  int scanAmount = 12;   // how far eyes scan left/right
+  int shrink = 6;        // make eyes narrow
+
+  // 1️⃣ Make eyes narrow (focused look)
+  for (int i = 0; i <= steps; i++) {
+    int lH = leftEyeH - shrink * i / steps;
+    int rH = rightEyeH - shrink * i / steps;
+
+    drawEyes(leftEyeX, rightEyeX, leftEyeW, lH, rightEyeW, rH, 0);
+    delay(40);
+  }
+
+  // 2️⃣ Scan left
+  for (int i = 0; i <= steps; i++) {
+    int offsetX = -scanAmount * i / steps;
+
+    drawEyes(leftEyeX + offsetX,
+             rightEyeX + offsetX,
+             leftEyeW,
+             leftEyeH - shrink,
+             rightEyeW,
+             rightEyeH - shrink,
+             0);
+    delay(40);
+  }
+
+  // 3️⃣ Scan right
+  for (int i = 0; i <= steps * 2; i++) {
+    int offsetX = -scanAmount + (2 * scanAmount) * i / (steps * 2);
+
+    drawEyes(leftEyeX + offsetX,
+             rightEyeX + offsetX,
+             leftEyeW,
+             leftEyeH - shrink,
+             rightEyeW,
+             rightEyeH - shrink,
+             0);
+    delay(40);
+  }
+
+  // 4️⃣ Return to center
+  for (int i = 0; i <= steps; i++) {
+    int lH = (leftEyeH - shrink) + shrink * i / steps;
+    int rH = (rightEyeH - shrink) + shrink * i / steps;
+
+    drawEyes(leftEyeX, rightEyeX, leftEyeW, lH, rightEyeW, rH, 0);
+    delay(40);
+  }
+
+  blinkEyesAtCurrent(leftEyeX, rightEyeX, 0);
+}
+
+// =======================
+// 🔙 REVERSE SCAN MODE
+// =======================
+void reverseModeEyes() {
+
+  int steps = 6;
+  int expand = 3;       // how much eyes grow
+  int bounceAmount = 4; // upward movement
+
+  // 1️⃣ Slight enlarge (excited look)
+  for (int i = 0; i <= steps; i++) {
+    int lW = leftEyeW + expand * i / steps;
+    int lH = leftEyeH + expand * i / steps;
+    int rW = rightEyeW + expand * i / steps;
+    int rH = rightEyeH + expand * i / steps;
+
+    drawEyes(leftEyeX, rightEyeX, lW, lH, rW, rH, 0);
+    delay(35);
+  }
+
+  // 2️⃣ Quick double blink (Vector style excitement)
+  for (int i = 0; i < 2; i++) {
+    blinkEyesAtCurrent(leftEyeX, rightEyeX, 0);
+    delay(100);
+  }
+
+  // 3️⃣ Upward bounce (moving forward energy)
+  for (int i = 0; i <= steps; i++) {
+    int offsetY = -bounceAmount * i / steps;
+
+    drawEyes(leftEyeX,
+             rightEyeX,
+             leftEyeW + expand,
+             leftEyeH + expand,
+             rightEyeW + expand,
+             rightEyeH + expand,
+             offsetY);
+    delay(30);
+  }
+
+  // 4️⃣ Bounce back down
+  for (int i = 0; i <= steps; i++) {
+    int offsetY = -bounceAmount + bounceAmount * i / steps;
+
+    drawEyes(leftEyeX,
+             rightEyeX,
+             leftEyeW + expand,
+             leftEyeH + expand,
+             rightEyeW + expand,
+             rightEyeH + expand,
+             offsetY);
+    delay(30);
+  }
+
+  // 5️⃣ Smooth return to normal
+  for (int i = 0; i <= steps; i++) {
+    int lW = (leftEyeW + expand) - expand * i / steps;
+    int lH = (leftEyeH + expand) - expand * i / steps;
+    int rW = (rightEyeW + expand) - expand * i / steps;
+    int rH = (rightEyeH + expand) - expand * i / steps;
+
+    drawEyes(leftEyeX, rightEyeX, lW, lH, rW, rH, 0);
+    delay(35);
+  }
+
+  blinkEyesAtCurrent(leftEyeX, rightEyeX, 0);
+}
+
+
+void speakMode() {
+
+  unsigned long startTime = millis();
+  unsigned long lastUpdate = 0;
+
+  bool mouthOpen = false;
+  int eyeOffset = 0;
+  bool moveRight = true;
+
+  while (millis() - startTime < 3500) {   // 3.5 seconds animation
+
+    if (millis() - lastUpdate > 120) {
+      lastUpdate = millis();
+
+      display.clearBuffer();
+
+      // =========================
+      // Eye Movement
+      // =========================
+      if (moveRight) {
+        eyeOffset += 2;
+        if (eyeOffset >= 6) moveRight = false;
+      } else {
+        eyeOffset -= 2;
+        if (eyeOffset <= -6) moveRight = true;
+      }
+
+      // Rounded Filled Eyes
+      display.drawRBox(30 + eyeOffset, 18, 28, 28, 8);
+      display.drawRBox(70 + eyeOffset, 18, 28, 28, 8);
+
+      // =========================
+      // Mouth Animation
+      // =========================
+      if (mouthOpen) {
+        display.drawRBox(54, 50, 20, 12, 4);   // Big open
+      } else {
+        display.drawRBox(58, 52, 12, 6, 3);    // Small open
+      }
+
+      mouthOpen = !mouthOpen;
+
+      display.sendBuffer();
+    }
+  }
+}
+
+
+// ================= MAX7219 =================
+#define HARDWARE_TYPE MD_MAX72XX::FC16_HW
+#define MAX_DEVICES 1
+#define CS_PIN 53
+MD_MAX72XX mx(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
+
+// ================= TOUCH PINS =================
+#define TOUCH_MODE 2
+#define TOUCH_YES  3
+#define TOUCH_NO   4
+
+// ================= SERIAL PORTS =================
+// HC-05: TX -> RX1(19), RX -> TX1(18)
+#define BT Serial1
+// DFPlayer: TX -> RX2(17), RX -> TX2(16)
+#define DF Serial2
+
+// ================= MODES =================
+#define MODE_LETTERS 1
+#define MODE_NUMBERS 2
+#define MODE_SHAPES  3
+#define MODE_MAZE    4
+#define MODE_QUIZ    5
+
+// ================= TIMING =================
+const unsigned long MODE_DEBOUNCE   = 300;
+const unsigned long LETTER_INTERVAL = 1700;
+const unsigned long NUMBER_INTERVAL = 1700;
+const unsigned long SHAPE_INTERVAL  = 2200;
+const unsigned long BLINK_INTERVAL  = 350;
+const unsigned long QUIZ_DELAY      = 1000;
+
+// ================= GLOBALS =================
+int mode = MODE_LETTERS;
+int indexItem = 0;
+bool introPlayed = false;
+
+unsigned long lastDisplayTime = 0;
+unsigned long lastBlinkTime   = 0;
+unsigned long quizResultTime  = 0;
+
+bool blinkState = true;
+
+// ================= DFPLAYER =================
+void sendCommand(uint8_t cmd, uint8_t p1, uint8_t p2)
+{
+  uint8_t buffer[10];
+
+  buffer[0] = 0x7E;
+  buffer[1] = 0xFF;
+  buffer[2] = 0x06;
+  buffer[3] = cmd;
+  buffer[4] = 0x00;
+  buffer[5] = p1;
+  buffer[6] = p2;
+
+  uint16_t checksum = 0 - (buffer[1] + buffer[2] + buffer[3] + buffer[4] + buffer[5] + buffer[6]);
+  buffer[7] = (checksum >> 8) & 0xFF;
+  buffer[8] = checksum & 0xFF;
+  buffer[9] = 0xEF;
+
+  DF.write(buffer, 10);
+  delay(120);
+}
+
+void playTrack(uint16_t track)
+{
+  sendCommand(0x03, track >> 8, track & 0xFF);
+}
+
+void setVolume(uint8_t vol)
+{
+  if (vol > 30) vol = 30;
+  sendCommand(0x06, 0x00, vol);
+}
+
+// ================= TOUCH EDGE =================
+bool risingTouch(uint8_t pin, unsigned long debounceMs)
+{
+  static bool lastState[70] = {0};
+  static unsigned long lastTime[70] = {0};
+
+  bool nowState = (digitalRead(pin) == HIGH);
+
+  if (nowState && !lastState[pin] && (millis() - lastTime[pin] > debounceMs))
+  {
+    lastState[pin] = nowState;
+    lastTime[pin] = millis();
+    return true;
+  }
+
+  lastState[pin] = nowState;
+  return false;
+}
+
+// ================= DISPLAY =================
+void displayPattern(const uint8_t pattern[8])
+{
+  mx.clear();
+  for (int row = 0; row < 8; row++)
+  {
+    mx.setRow(0, row, pattern[row]);
+  }
+  mx.update();
+}
+
+void clearDisplay()
+{
+  mx.clear();
+  mx.update();
+}
+
+// ================= FEEDBACK FACES =================
+const uint8_t SMILE[8] = {0x3C,0x42,0xA5,0x81,0xA5,0x99,0x42,0x3C};
+const uint8_t SAD[8]   = {0x3C,0x42,0xA5,0x81,0x99,0xA5,0x42,0x3C};
+
+// ================= LETTERS =================
+const uint8_t LETTERS[26][8] =
+{
+  {0x18,0x3C,0x66,0x66,0x7E,0x66,0x66,0x00},
+  {0x7C,0x66,0x66,0x7C,0x66,0x66,0x7C,0x00},
+  {0x3C,0x66,0x60,0x60,0x60,0x66,0x3C,0x00},
+  {0x78,0x6C,0x66,0x66,0x66,0x6C,0x78,0x00},
+  {0x7E,0x60,0x60,0x7C,0x60,0x60,0x7E,0x00},
+  {0x7E,0x60,0x60,0x7C,0x60,0x60,0x60,0x00},
+  {0x3C,0x66,0x60,0x6E,0x66,0x66,0x3C,0x00},
+  {0x66,0x66,0x66,0x7E,0x66,0x66,0x66,0x00},
+  {0x3C,0x18,0x18,0x18,0x18,0x18,0x3C,0x00},
+  {0x1E,0x0C,0x0C,0x0C,0x0C,0x6C,0x38,0x00},
+  {0x66,0x6C,0x78,0x70,0x78,0x6C,0x66,0x00},
+  {0x60,0x60,0x60,0x60,0x60,0x60,0x7E,0x00},
+  {0x63,0x77,0x7F,0x6B,0x63,0x63,0x63,0x00},
+  {0x66,0x76,0x7E,0x7E,0x6E,0x66,0x66,0x00},
+  {0x3C,0x66,0x66,0x66,0x66,0x66,0x3C,0x00},
+  {0x7C,0x66,0x66,0x7C,0x60,0x60,0x60,0x00},
+  {0x3C,0x66,0x66,0x66,0x6E,0x3C,0x0E,0x00},
+  {0x7C,0x66,0x66,0x7C,0x78,0x6C,0x66,0x00},
+  {0x3C,0x66,0x60,0x3C,0x06,0x66,0x3C,0x00},
+  {0x7E,0x18,0x18,0x18,0x18,0x18,0x18,0x00},
+  {0x66,0x66,0x66,0x66,0x66,0x66,0x3C,0x00},
+  {0x66,0x66,0x66,0x66,0x66,0x3C,0x18,0x00},
+  {0x63,0x63,0x63,0x6B,0x7F,0x77,0x63,0x00},
+  {0x66,0x66,0x3C,0x18,0x3C,0x66,0x66,0x00},
+  {0x66,0x66,0x66,0x3C,0x18,0x18,0x18,0x00},
+  {0x7E,0x06,0x0C,0x18,0x30,0x60,0x7E,0x00}
+};
+
+// ================= NUMBERS =================
+const uint8_t NUMBERS[10][8] =
+{
+  {0x3C,0x66,0x6E,0x76,0x66,0x66,0x3C,0x00},
+  {0x18,0x38,0x18,0x18,0x18,0x18,0x3C,0x00},
+  {0x3C,0x66,0x06,0x0C,0x18,0x30,0x7E,0x00},
+  {0x3C,0x66,0x06,0x1C,0x06,0x66,0x3C,0x00},
+  {0x0C,0x1C,0x3C,0x6C,0x7E,0x0C,0x0C,0x00},
+  {0x7E,0x60,0x7C,0x06,0x06,0x66,0x3C,0x00},
+  {0x3C,0x60,0x7C,0x66,0x66,0x66,0x3C,0x00},
+  {0x7E,0x06,0x0C,0x18,0x30,0x30,0x30,0x00},
+  {0x3C,0x66,0x66,0x3C,0x66,0x66,0x3C,0x00},
+  {0x3C,0x66,0x66,0x3E,0x06,0x06,0x3C,0x00}
+};
+
+// ================= SHAPES =================
+// 12 shapes -> tracks 45..56
+const uint8_t SHAPES[12][8] =
+{
+  {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}, // Square
+  {0x00,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x00}, // Rectangle
+  {0x00,0x00,0x08,0x1C,0x3E,0x7F,0x00,0x00}, // Triangle
+  {0x3C,0x7E,0xFF,0xFF,0xFF,0xFF,0x7E,0x3C}, // Circle
+  {0x00,0x18,0x3C,0x7E,0xFF,0x7E,0x3C,0x18}, // Pentagon
+  {0x00,0x3C,0x7E,0xFF,0xFF,0x7E,0x3C,0x00}, // Oval
+  {0x00,0x3C,0x7E,0xFF,0xFF,0x7E,0x3C,0x00}, // Hexagon
+  {0x81,0x42,0x24,0x18,0x18,0x24,0x42,0x81}, // Cross
+  {0x00,0x66,0xFF,0xFF,0xFF,0x7E,0x3C,0x18}, // Heart
+  {0x18,0x3C,0x7E,0xFF,0x7E,0x3C,0x18,0x00}, // Diamond
+  {0x08,0x0C,0xFE,0xFF,0xFE,0x0C,0x08,0x00}, // Arrow
+  {0x3C,0x42,0x7E,0x42,0x42,0x7E,0x42,0x3C}  // Cylinder
+};
+
+// ================= 7 MAZES =================
+int px = 0;
+int py = 7;
+const int goalX = 7;
+const int goalY = 0;
+int mazeLevel = 0;
+
+byte mazes[7][8][8] =
+{
+  {
+    {0,0,0,1,0,0,0,0},
+    {1,1,0,1,0,1,1,0},
+    {0,0,0,0,0,0,1,0},
+    {0,1,1,1,1,0,1,0},
+    {0,0,0,0,1,0,0,0},
+    {0,1,1,0,1,1,1,0},
+    {0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0}
+  },
+  {
+    {0,1,0,0,0,1,0,0},
+    {0,1,0,1,0,1,0,1},
+    {0,0,0,1,0,0,0,1},
+    {1,1,0,1,1,1,0,0},
+    {0,0,0,0,0,1,0,1},
+    {0,1,1,1,0,1,0,0},
+    {0,0,0,1,0,0,0,0},
+    {0,0,0,0,0,0,0,0}
+  },
+  {
+    {0,0,1,0,0,0,1,0},
+    {1,0,1,0,1,0,1,0},
+    {1,0,0,0,1,0,0,0},
+    {1,1,1,0,1,1,1,0},
+    {0,0,0,0,0,0,1,0},
+    {0,1,1,1,1,0,1,0},
+    {0,0,0,0,1,0,0,0},
+    {0,0,0,0,0,0,0,0}
+  },
+  {
+    {0,0,0,0,1,0,0,0},
+    {1,1,1,0,1,0,1,0},
+    {0,0,0,0,1,0,1,0},
+    {0,1,1,1,1,0,1,0},
+    {0,0,0,0,0,0,1,0},
+    {0,1,1,1,1,1,1,0},
+    {0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0}
+  },
+  {
+    {0,1,0,0,0,1,0,0},
+    {0,1,0,1,0,1,0,1},
+    {0,0,0,1,0,0,0,1},
+    {1,1,0,1,1,1,0,0},
+    {0,0,0,0,0,1,0,1},
+    {0,1,1,1,0,1,0,0},
+    {0,0,0,1,0,0,0,0},
+    {0,0,0,0,0,0,0,0}
+  },
+  {
+    {0,0,1,0,0,1,0,0},
+    {1,0,1,0,1,1,0,1},
+    {1,0,0,0,0,0,0,1},
+    {1,1,1,1,1,1,0,0},
+    {0,0,0,0,0,1,0,1},
+    {0,1,1,1,0,1,0,0},
+    {0,0,0,1,0,0,0,0},
+    {0,0,0,0,0,0,0,0}
+  },
+  {
+    {0,1,0,0,0,0,1,0},
+    {0,1,0,1,1,0,1,0},
+    {0,0,0,0,1,0,0,0},
+    {1,1,1,0,1,1,1,0},
+    {0,0,0,0,0,0,1,0},
+    {0,1,1,1,1,0,1,0},
+    {0,0,0,0,1,0,0,0},
+    {0,0,0,0,0,0,0,0}
+  }
+};
+
+// ================= QUIZ =================
+int quizState = 0;       // 0 = new question, 1 = wait answer, 2 = result delay
+int quizIndex = 0;
+bool quizCorrectYes = false;
+
+// 0 = number, 1 = letter, 2 = shape
+const uint8_t QUIZ_TYPES[10]       = {0,1,2,0,1,2,0,1,2,0};
+const int QUIZ_DISPLAY_ITEMS[10]   = {5,0,3,9,1,0,7,12,2,8};
+const int QUIZ_ASK_ITEMS[10]       = {5,0,3,9,25,0,2,12,2,0};
+
+void showQuizItem(int type, int item)
+{
+  if (type == 0) displayPattern(NUMBERS[item]);
+  else if (type == 1) displayPattern(LETTERS[item]);
+  else displayPattern(SHAPES[item]);
+}
+
+void startQuizQuestion()
+{
+  if (quizIndex >= 10) quizIndex = 0;
+
+  int type = QUIZ_TYPES[quizIndex];
+  int displayItem = QUIZ_DISPLAY_ITEMS[quizIndex];
+  int askItem = QUIZ_ASK_ITEMS[quizIndex];
+
+  quizCorrectYes = (displayItem == askItem);
+
+  showQuizItem(type, displayItem);
+
+  Serial.println("----- QUIZ QUESTION -----");
+
+  if(type == 0)
+  {
+    Serial.print("Is this number ");
+    Serial.print(askItem);
+    Serial.println(" ?");
+  }
+  else if(type == 1)
+  {
+    Serial.print("Is this letter ");
+    Serial.print((char)('A' + askItem));
+    Serial.println(" ?");
+  }
+  else if(type == 2)
+  {
+    Serial.print("Is this shape number ");
+    Serial.print(askItem + 1);
+    Serial.println(" ?");
+  }
+
+  Serial.println("Press YES or NO Touch");
+  Serial.println("-----------------------");
+
+  quizState = 1;
+}
+// ================= RESET HELPERS =================
+void resetMazePlayer()
+{
+  px = 0;
+  py = 7;
+}
+
+void resetModeState()
+{
+  indexItem = 0;
+  introPlayed = false;
+  lastDisplayTime = 0;
+
+  if (mode == MODE_MAZE)
+  {
+    resetMazePlayer();
+    lastBlinkTime = 0;
+    blinkState = true;
+  }
+
+  if (mode == MODE_QUIZ)
+  {
+    quizState = 0;
+  }
+}
+
+// ================= MODE INTRO =================
+void playModeIntro()
+{
+  if (introPlayed) return;
+
+  if (mode == MODE_LETTERS) playTrack(6);
+  else if (mode == MODE_NUMBERS) playTrack(33);
+  else if (mode == MODE_SHAPES) playTrack(44);
+  else if (mode == MODE_MAZE) playTrack(57);
+  else if (mode == MODE_QUIZ) playTrack(61);
+
+  delay(1000);
+  introPlayed = true;
+}
+
+// ================= MODE CHANGE =================
+void handleModeTouch()
+{
+  if (risingTouch(TOUCH_MODE, MODE_DEBOUNCE))
+  {
+    mode++;
+    if (mode > MODE_QUIZ) mode = MODE_LETTERS;
+    resetModeState();
+  }
+}
+
+// ================= MAZE DRAW =================
+void drawMaze()
+{
+  mx.clear();
+
+  for (int y = 0; y < 8; y++)
+  {
+    for (int x = 0; x < 8; x++)
+    {
+      if (mazes[mazeLevel][y][x] == 1)
+      {
+        mx.setPoint(y, x, true);
+      }
+    }
+  }
+
+  if (blinkState)
+  {
+    mx.setPoint(goalY, goalX, true);
+  }
+
+  mx.setPoint(py, px, true);
+  mx.update();
+}
+
+// ================= SETUP =================
+void setup()
+{
+  pinMode(TOUCH_MODE, INPUT);
+  pinMode(TOUCH_YES, INPUT);
+  pinMode(TOUCH_NO, INPUT);
+
+  Serial.begin(9600);
+  BT.begin(9600);
+  DF.begin(9600);
+
+  mx.begin();
+  mx.control(MD_MAX72XX::INTENSITY, 5);
+  clearDisplay();
+//===================================================
+//display servo intialize...
+  display.begin();
+
+  horizontalServo.attach(9);
+  verticalServo.attach(10);
+
+  centerPosition();
+  delay(500);
+  //======================================
+  delay(1500);
+  setVolume(30);
+
+  startupAnimation();
+ 
+  resetModeState();
+}
+
+// ================= LOOP =================
+void loop()
+{
+  handleModeTouch();
+  playModeIntro();
+
+  // ================= LETTERS =================
+  if (mode == MODE_LETTERS)
+  {
+    if (millis() - lastDisplayTime >= LETTER_INTERVAL)
+    {
+      displayPattern(LETTERS[indexItem]);
+      delay(1000);
+      playTrack(7 + indexItem);   // 7..32
+
+      indexItem++;
+      if (indexItem >= 26) indexItem = 0;
+
+      lastDisplayTime = millis();
+    }
+  }
+
+  // ================= NUMBERS =================
+  else if (mode == MODE_NUMBERS)
+  {
+    if (millis() - lastDisplayTime >= NUMBER_INTERVAL)
+    {
+      displayPattern(NUMBERS[indexItem]);
+      delay(100);
+      playTrack(34 + indexItem);  // 34..43
+
+      indexItem++;
+      if (indexItem >= 10) indexItem = 0;
+
+      lastDisplayTime = millis();
+    }
+  }
+
+  // ================= SHAPES =================
+  else if (mode == MODE_SHAPES)
+  {
+    if (millis() - lastDisplayTime >= SHAPE_INTERVAL)
+    {
+      displayPattern(SHAPES[indexItem]);
+      delay(3000);
+      playTrack(45 + indexItem);  // 45..56
+
+      indexItem++;
+      if (indexItem >= 12) indexItem = 0;
+
+      lastDisplayTime = millis();
+    }
+  }
+
+  // ================= MAZE =================
+  else if (mode == MODE_MAZE)
+  {
+    if (millis() - lastBlinkTime >= BLINK_INTERVAL)
+    {
+      blinkState = !blinkState;
+      lastBlinkTime = millis();
+    }
+
+    if (BT.available())
+    {
+      char c = toupper(BT.read());
+
+      if (c == 'F' && py > 0 && mazes[mazeLevel][py - 1][px] == 0) py--;
+      if (c == 'B' && py < 7 && mazes[mazeLevel][py + 1][px] == 0) py++;
+      if (c == 'L' && px > 0 && mazes[mazeLevel][py][px - 1] == 0) px--;
+      if (c == 'R' && px < 7 && mazes[mazeLevel][py][px + 1] == 0) px++;
+    }
+
+    drawMaze();
+
+    if (px == goalX && py == goalY)
+    {
+      playTrack(58);   // maze solved
+      delay(600);
+
+      mazeLevel++;
+      if (mazeLevel >= 7) mazeLevel = 0;
+
+      resetMazePlayer();
+      drawMaze();
+    }
+  }
+
+  // ================= QUIZ =================
+  else if (mode == MODE_QUIZ)
+  {
+    if (quizState == 0)
+    {
+      startQuizQuestion();
+    }
+    else if (quizState == 1)
+    {
+      if (risingTouch(TOUCH_YES, MODE_DEBOUNCE))
+      {
+        if (quizCorrectYes)
+        {
+          displayPattern(SMILE);
+          playTrack(59);   // correct
+        }
+        else
+        {
+          displayPattern(SAD);
+          playTrack(60);   // wrong
+        }
+
+        quizResultTime = millis();
+        quizState = 2;
+      }
+
+      if (risingTouch(TOUCH_NO, MODE_DEBOUNCE))
+      {
+        if (!quizCorrectYes)
+        {
+          displayPattern(SMILE);
+          playTrack(59);   // correct
+        }
+        else
+        {
+          displayPattern(SAD);
+          playTrack(60);   // wrong
+        }
+
+        quizResultTime = millis();
+        quizState = 2;
+      }
+    }
+    else if (quizState == 2)
+    {
+      if (millis() - quizResultTime >= QUIZ_DELAY)
+      {
+        quizIndex++;
+        if (quizIndex >= 10) quizIndex = 0;
+        quizState = 0;
+      }
+    }
+  }
+}
