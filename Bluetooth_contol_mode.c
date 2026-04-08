@@ -1,111 +1,90 @@
 #include <Arduino.h>
 #include <pwm.h>
-#include <esp8266.h>
+#include <esp8266.h>   // used as UART wrapper
 
-// ---------------- MOTOR PWM CHANNELS ----------------
+// ---------------- PWM CHANNELS ----------------
 #define RIGHT_FWD  0
 #define RIGHT_REV  1
 #define LEFT_FWD   2
 #define LEFT_REV   3
 
 #define PWM_PERIOD 800000
-#define MOTOR_SPEED 500000
+#define SPEED      600000
 
-ESP8266Class Bluetooth(1);   // UART1 for Bluetooth
+ESP8266Class BT(1);   // UART1
 
-char cmd = 'S';
+char cmd;
 
-// ---------------- MOTOR FUNCTIONS ----------------
-void stopMotors()
+// ---------------- MOTOR CONTROL ----------------
+void stopMotor()
 {
-  analogWrite(RIGHT_FWD, 0);
-  analogWrite(RIGHT_REV, 0);
-  analogWrite(LEFT_FWD, 0);
-  analogWrite(LEFT_REV, 0);
+    analogWrite(RIGHT_FWD, 0);
+    analogWrite(RIGHT_REV, 0);
+    analogWrite(LEFT_FWD, 0);
+    analogWrite(LEFT_REV, 0);
 }
 
-void moveForward()
+void forward()
 {
-  analogWrite(RIGHT_FWD, MOTOR_SPEED);
-  analogWrite(RIGHT_REV, 0);
-  analogWrite(LEFT_FWD, MOTOR_SPEED);
-  analogWrite(LEFT_REV, 0);
+    analogWrite(RIGHT_FWD, SPEED);
+    analogWrite(RIGHT_REV, 0);
+    analogWrite(LEFT_FWD, SPEED);
+    analogWrite(LEFT_REV, 0);
 }
 
-void moveBackward()
+void backward()
 {
-  analogWrite(RIGHT_FWD, 0);
-  analogWrite(RIGHT_REV, MOTOR_SPEED);
-  analogWrite(LEFT_FWD, 0);
-  analogWrite(LEFT_REV, MOTOR_SPEED);
+    analogWrite(RIGHT_FWD, 0);
+    analogWrite(RIGHT_REV, SPEED);
+    analogWrite(LEFT_FWD, 0);
+    analogWrite(LEFT_REV, SPEED);
 }
 
-void turnLeft()
+void left()
 {
-  analogWrite(RIGHT_FWD, MOTOR_SPEED);
-  analogWrite(RIGHT_REV, 0);
-  analogWrite(LEFT_FWD, 0);
-  analogWrite(LEFT_REV, 0);
+    analogWrite(RIGHT_FWD, SPEED);
+    analogWrite(RIGHT_REV, 0);
+    analogWrite(LEFT_FWD, 0);
+    analogWrite(LEFT_REV, SPEED/4);
 }
 
-void turnRight()
+void right()
 {
-  analogWrite(RIGHT_FWD, 0);
-  analogWrite(RIGHT_REV, 0);
-  analogWrite(LEFT_FWD, MOTOR_SPEED);
-  analogWrite(LEFT_REV, 0);
+    analogWrite(RIGHT_FWD, 0);
+    analogWrite(RIGHT_REV, SPEED/4);
+    analogWrite(LEFT_FWD, SPEED);
+    analogWrite(LEFT_REV, 0);
 }
 
 // ---------------- SETUP ----------------
 void setup()
 {
-  Serial.begin(115200);
-  Bluetooth.begin(9600);
+    Serial.begin(115200);
+    BT.begin(9600);
 
-  PWM.PWMC_Set_Period(RIGHT_FWD, PWM_PERIOD);
-  PWM.PWMC_Set_Period(RIGHT_REV, PWM_PERIOD);
-  PWM.PWMC_Set_Period(LEFT_FWD, PWM_PERIOD);
-  PWM.PWMC_Set_Period(LEFT_REV, PWM_PERIOD);
+    // Set PWM period
+    PWM.PWMC_Set_Period(RIGHT_FWD, PWM_PERIOD);
+    PWM.PWMC_Set_Period(RIGHT_REV, PWM_PERIOD);
+    PWM.PWMC_Set_Period(LEFT_FWD, PWM_PERIOD);
+    PWM.PWMC_Set_Period(LEFT_REV, PWM_PERIOD);
 
-  stopMotors();
+    stopMotor();
 
-  Serial.println("Sharvi O7 Bluetooth Control Ready");
+    Serial.println("SHARVI O7 READY (ARIES V2)");
 }
 
 // ---------------- LOOP ----------------
 void loop()
 {
-  if (Bluetooth.available())
-  {
-    cmd = Bluetooth.read();
-    Serial.print("Received: ");
-    Serial.println(cmd);
-
-    switch (cmd)
+    if (BT.available())
     {
-      case 'F':
-        moveForward();
-        break;
+        cmd = BT.read();
+        Serial.println(cmd);
 
-      case 'B':
-        moveBackward();
-        break;
-
-      case 'L':
-        turnLeft();
-        break;
-
-      case 'R':
-        turnRight();
-        break;
-
-      case 'S':
-        stopMotors();
-        break;
-
-      default:
-        stopMotors();
-        break;
+        if (cmd == 'F') forward();
+        else if (cmd == 'B') backward();
+        else if (cmd == 'L') left();
+        else if (cmd == 'R') right();
+        else if (cmd == 'S') stopMotor();
     }
-  }
 }
