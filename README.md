@@ -124,27 +124,84 @@ The integration of multiple modules results in smooth and interactive performanc
 
 ---
 
-## IX. Future Scope
+## IX. Proposed AI Integration Extension
 
-Future improvements include:
+To enhance SHARVI O7, an advanced **Emotion-Aware Adaptive Learning System** can be integrated.
 
-* AI-based interaction
-* Voice recognition
-* Mobile app integration
-* Multi-language support
-* Camera-based object recognition
+### A. Motivation
+
+Inspired by modern intelligent learning platforms, the rover can evolve from a reactive system to a **predictive and adaptive AI-based learning companion**.
+
+### B. Proposed AI Features
+
+1. **Emotion Recognition System**
+
+   * Uses camera input and computer vision (OpenCV + CNN)
+   * Detects emotions such as happy, confused, frustrated, or bored
+
+2. **Adaptive Learning Engine**
+
+   * Adjusts difficulty and content based on user emotional state
+   * Provides personalized learning paths
+
+3. **Memory Prediction Model**
+
+   * Based on Ebbinghaus Forgetting Curve
+   * Predicts when a child may forget a concept
+   * Triggers revision automatically
+
+4. **Micro-Personalization Engine**
+
+   * Tracks individual learning patterns
+   * Customizes teaching speed and repetition
+
+5. **Real-Time Content Adaptation**
+
+   * Changes quiz difficulty and teaching style dynamically
+   * Improves engagement and retention
+
+### C. Extended System Flow
+
+Camera → Face Detection → Emotion Classification (CNN) → Emotion Score → AI Decision Engine → Content Adaptation → Feedback
+
+### D. Technical Stack (Future Implementation)
+
+* Frontend: React
+* Backend: Flask / FastAPI
+* AI: TensorFlow / OpenCV
+* Data Processing: NumPy, Pandas
+* Database: MongoDB
 
 ---
 
-## X. Conclusion
+## X. Future Scope
+
+Future improvements include:
+
+* Full AI integration for emotion-aware learning
+* Voice recognition and speech interaction
+* Mobile app dashboard for parents/teachers
+* Cloud-based analytics and tracking
+* Multi-language intelligent tutoring
+* Camera-based object and gesture recognition
+
+---
+
+## XI. Conclusion
 
 SHARVI O7 demonstrates how embedded systems and robotics can be used to enhance educational experiences. By integrating movement, display, sound, and interaction, the system provides a comprehensive learning platform that is both effective and engaging.
+
+With the addition of AI-based emotion recognition and adaptive learning, SHARVI O7 has the potential to evolve into a next-generation intelligent educational assistant.
 
 ---
 
 ## References
 
-[1] Microchip Technology, "PIC32CM Series Datasheet"
+[1] C-DAC, "Vega Aries V2.0 Processor Documentation"
 [2] MAX7219 LED Driver Datasheet
 [3] DFPlayer Mini Module Documentation
 [4] Embedded Systems Design Concepts, IEEE Resources
+
+---
+
+**Note:** This project is fully developed using the **Vega Aries V2.0 processor platform (C-DAC India)** and does not use any Microchip-based controllers.
